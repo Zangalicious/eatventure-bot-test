@@ -11,7 +11,7 @@ WINDOW_HEIGHT = 650 * 1.2
 
 # Debug and Visualization Settings
 DEBUG = True
-DEBUG_VISION = False  # Enables masked view for tuning pixel density
+DEBUG_VISION = True  # Enables masked view for tuning pixel density
 ShowForbiddenArea = False  # Enables a visual overlay showing forbidden zones in red
 
 
@@ -109,7 +109,7 @@ MOUSE_CLICK_RETRY_SETTLE_DELAY = 0.0015
 SCROLL_START_POS = (180, 390)
 
 # Distance in pixels for a single "standard" scroll step
-SCROLL_PIXEL_STEP = 120
+SCROLL_PIXEL_STEP = 175
 SCROLL_DISTANCE_RATIO = 1  # Default multiplier for non-incremental scrolls
 
 # ==========================================
@@ -117,7 +117,7 @@ SCROLL_DISTANCE_RATIO = 1  # Default multiplier for non-incremental scrolls
 # ==========================================
 # Arithmetic Progression Strategy: Area expands each cycle (1, 3, 5, 7...)
 MAX_SCROLL_CYCLES = 15      # Maximum widening steps before resetting
-SCROLL_INCREMENT_STEP = 2   # Number of scrolls to add per cycle
+SCROLL_INCREMENT_STEP = 1   # Number of scrolls to add per cycle
 SCROLL_INTERVAL_PAUSE = 0.3 # Time to let UI settle after EACH individual scroll
 CYCLE_PAUSE_DURATION = 0.3  # Wait after a full sequence finishes
 
@@ -322,9 +322,9 @@ AI_LEARNING_MAX_SEARCH_INTERVAL = 0.05
 ###  TELEGRAM NOTIFICATIONS ###
 ###############################
 
-TELEGRAM_ENABLED = False
-TELEGRAM_BOT_TOKEN = ""
-TELEGRAM_CHAT_ID = ""
+TELEGRAM_ENABLED = True
+TELEGRAM_BOT_TOKEN = "8244889019:AAFFqf1dn4d3LbHf3tenOXEBaoruj3FWkR0"
+TELEGRAM_CHAT_ID = "770506304"
 
 
 ###############################
@@ -340,7 +340,7 @@ FORBIDDEN_ZONES = [
     },
     {
         "name": "Zone 1: Right side menu area",
-        "x_min": 290, "x_max": 350, "y_min": 93, "y_max": 270
+        "x_min": 290, "x_max": 350, "y_min": 93, "y_max": 320
     },
     {
         "name": "Zone 2: Left side top menu area",
