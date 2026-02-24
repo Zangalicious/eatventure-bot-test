@@ -1653,8 +1653,10 @@ class EatventureBot:
         """
         self.check_critical_interrupts()
         screenshot = self._capture(max_y=config.MAX_SEARCH_Y, force=True)
+        # IMPORTANT: Do not run temporal debouncing here.
+        # _stable_red_icons mutates shared history and would "prime" the cache before
+        # the main priority pass in the same interval.
         red_icons = self._detect_red_icons_in_view(screenshot, max_y=config.MAX_SEARCH_Y)
-        red_icons = self._stable_red_icons(red_icons)
 
         if not red_icons:
             return None
