@@ -110,7 +110,7 @@ MOUSE_CLICK_RETRY_SETTLE_DELAY = 0.004  # Retry attempts now wait longer so UI h
 SCROLL_START_POS = (180, 390)
 
 # Distance in pixels for a single "standard" scroll step
-SCROLL_PIXEL_STEP = 175
+SCROLL_PIXEL_STEP = 150
 SCROLL_DISTANCE_RATIO = 1  # Default multiplier for non-incremental scrolls
 
 # ==========================================
@@ -337,9 +337,9 @@ AI_LEARNING_MAX_SEARCH_INTERVAL = 0.09  # Keep learner clamp aligned with tuner 
 ###  TELEGRAM NOTIFICATIONS ###
 ###############################
 
-TELEGRAM_ENABLED = True
-TELEGRAM_BOT_TOKEN = "8244889019:AAFFqf1dn4d3LbHf3tenOXEBaoruj3FWkR0"
-TELEGRAM_CHAT_ID = "770506304"
+TELEGRAM_ENABLED = False
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_CHAT_ID = ""
 
 
 ###############################
