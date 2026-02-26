@@ -7,6 +7,9 @@
     "enablePermanentToolApproval": true
   },
   "general": {
-    "defaultApprovalMode": "auto_edit"
+    "defaultApprovalMode": "auto_edit",
+    "sessionRetention": {
+      "maxAge": "7d"
+    }
   }
 }

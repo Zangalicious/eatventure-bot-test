@@ -1075,24 +1075,42 @@ class EatventureBot:
             
         return pixel_count >= threshold, pixel_count
 
-    def _filter_forbidden_red_icons(self, red_icons):
-        filtered_icons = []
-        forbidden_zone_count = 0
-        forbidden_zones = self.forbidden_zones
-
-        for icon in red_icons:
-            conf, x, y = icon[:3]
-            in_forbidden = any(
-                zone_x_min <= x <= zone_x_max and zone_y_min <= y <= zone_y_max
-                for zone_x_min, zone_x_max, zone_y_min, zone_y_max in forbidden_zones
-            )
-
-            if in_forbidden:
-                forbidden_zone_count += 1
+    def _segregate_assets(self, detections):
+        """
+        Action Step 1 & 4: Segregate detections and pad execution delays.
+        Categorizes coordinates into safe_assets and forbidden_assets.
+        'Slow is Smooth, Smooth is Fast' - Deliberately sort coordinates before action.
+        """
+        # Step 4: Pad the Execution Delays
+        delay = getattr(config, "ASSET_SEGREGATION_DELAY", 0.04)
+        if delay > 0:
+            time.sleep(delay)
+            
+        safe_assets = []
+        forbidden_assets = []
+        
+        for det in detections:
+            # det is assumed to be (confidence, x, y, ...)
+            if len(det) < 3:
+                continue
+            conf, x, y = det[:3]
+            
+            # Action Step 1: Segregate Detections immediately upon scanning
+            if self.mouse_controller.is_in_forbidden_zone(x, y, relative=True):
+                forbidden_assets.append(det)
             else:
-                filtered_icons.append(icon)
+                safe_assets.append(det)
+                
+        # Return distinct arrays
+        return safe_assets, forbidden_assets
 
-        return filtered_icons, forbidden_zone_count
+    def _filter_forbidden_red_icons(self, red_icons):
+        """
+        Refactored: Uses the central segregation wrapper to categorize icons.
+        Returns: (safe_icons, forbidden_count)
+        """
+        safe_icons, forbidden_icons = self._segregate_assets(red_icons)
+        return safe_icons, len(forbidden_icons)
 
     def _prioritize_red_icons(self, red_icons):
         def get_priority(icon):
@@ -1229,10 +1247,15 @@ class EatventureBot:
         return scanner.scan(config.ASSETS_DIR, required_templates=required_templates)
 
     def _scan_and_click_non_red_assets(self, screenshot):
+        """
+        Action Step 2 & 3: Implement Priority and Fallback logic for non-red assets.
+        Ensures Upgrade Stations and Boxes are handled with safe-zone prioritization.
+        """
         clicked_targets = 0
         clicked_upgrade_station = False
         clicked_box = False
 
+        # 1. Upgrade Station Handling
         upgrade_template = self.templates.get("upgradeStation")
         if upgrade_template is not None:
             template, mask = upgrade_template
@@ -1241,38 +1264,43 @@ class EatventureBot:
                 if self.vision_optimizer.enabled
                 else config.UPGRADE_STATION_THRESHOLD
             )
-            found, confidence, x, y = self.image_matcher.find_template(
+            
+            # Action Step 1: Segregate Detections immediately
+            all_stations = self.image_matcher.find_all_templates(
                 screenshot,
                 template,
                 mask=mask,
                 threshold=upgrade_threshold,
-                template_name="upgradeStation-no-red-fallback",
-                check_color=config.UPGRADE_STATION_COLOR_CHECK,
+                template_name="upgradeStation-all"
             )
-            if found:
-                is_safe = self._is_asset_click_safe("Upgrade Station", x, y)
-                if is_safe is None:
-                    return -2
-                if not is_safe:
-                    logger.debug("Fallback scan: upgrade station in forbidden zone, redirecting to oscillating search")
-                    if self._redirect_forbidden_asset_to_scroll("Upgrade Station", x, y):
-                        return -1
-                else:
-                    logger.info(
-                        "Fallback scan: clicking upgrade station at (%s, %s) [%.2f%%]",
-                        x,
-                        y,
-                        confidence * 100,
-                    )
-                    if self.mouse_controller.click(x, y, relative=True):
-                        clicked_targets += 1
-                        clicked_upgrade_station = True
-                        self.upgrade_found_in_cycle = True
-                        self.vision_optimizer.update_upgrade_station_confidence(confidence)
-                    elif self.mouse_controller.is_in_forbidden_zone(x, y):
-                        if self._redirect_forbidden_asset_to_scroll("Upgrade Station", x, y):
-                            return -1
+            
+            safe_stations, forbidden_stations = self._segregate_assets(all_stations)
+            
+            # Condition 2 (The Priority): IF safe assets exist, click them.
+            if safe_stations:
+                safe_stations.sort(key=lambda s: s[0], reverse=True)
+                for conf, x, y in safe_stations:
+                    is_safe = self._is_asset_click_safe("Upgrade Station", x, y)
+                    if is_safe is None:
+                        return -2
+                    if is_safe:
+                        logger.info("Fallback scan: clicking safe upgrade station at (%s, %s) [%.2f%%]", x, y, conf * 100)
+                        if self.mouse_controller.click(x, y, relative=True):
+                            clicked_targets += 1
+                            clicked_upgrade_station = True
+                            self.upgrade_found_in_cycle = True
+                            self.vision_optimizer.update_upgrade_station_confidence(conf)
+                            break # Prioritize one station per pass
+            # Condition 1 (The Fallback): IF ONLY forbidden assets detected -> Scroll
+            elif forbidden_stations:
+                logger.warning("Fallback scan: ONLY forbidden upgrade stations detected; triggering Oscillating Search")
+                if self._redirect_forbidden_asset_to_scroll("Upgrade Station", forbidden_stations[0][1], forbidden_stations[0][2]):
+                    return -1
+            else:
+                self.vision_optimizer.update_upgrade_station_miss()
 
+        # 2. Box Handling
+        all_boxes = []
         for box_name in ("box1", "box2", "box3", "box4", "box5"):
             box_template = self.templates.get(box_name)
             if box_template is None:
@@ -1284,33 +1312,40 @@ class EatventureBot:
                 if self.vision_optimizer.enabled
                 else config.BOX_THRESHOLD
             )
-            found, confidence, x, y = self.image_matcher.find_template(
+            found_boxes = self.image_matcher.find_all_templates(
                 screenshot,
                 template,
                 mask=mask,
                 threshold=box_threshold,
-                template_name=f"{box_name}-no-red-fallback",
+                template_name=box_name
             )
+            for b_conf, b_x, b_y in found_boxes:
+                all_boxes.append((b_conf, b_x, b_y, box_name))
 
-            if not found:
-                self.vision_optimizer.update_box_miss()
-                continue
+        if all_boxes:
+            safe_boxes, forbidden_boxes = self._segregate_assets(all_boxes)
+            
+            if safe_boxes:
+                safe_boxes.sort(key=lambda b: b[0], reverse=True)
+                for conf, x, y, name in safe_boxes:
+                    logger.info("Fallback scan: clicking safe %s at (%s, %s) [%.2f%%]", name, x, y, conf * 100)
+                    if self.mouse_controller.click(x, y, relative=True):
+                        clicked_targets += 1
+                        clicked_box = True
+                        self.vision_optimizer.update_box_confidence(conf)
+            elif forbidden_boxes:
+                logger.debug("Fallback scan: boxes only in forbidden zone, ignoring.")
 
-            if self.mouse_controller.is_in_forbidden_zone(x, y):
-                logger.debug("Fallback scan: %s in forbidden zone, skipping", box_name)
-                continue
-
+        if clicked_targets > 0:
+            self._no_red_scroll_cycle_pending = True
             logger.info(
-                "Fallback scan: clicking %s at (%s, %s) [%.2f%%]",
-                box_name,
-                x,
-                y,
-                confidence * 100,
+                "Fallback scan summary: clicked %s target(s) [upgrade_station=%s, boxes=%s]; scheduling no-red scroll cycle",
+                clicked_targets,
+                clicked_upgrade_station,
+                clicked_box,
             )
-            if self.mouse_controller.click(x, y, relative=True):
-                clicked_targets += 1
-                clicked_box = True
-                self.vision_optimizer.update_box_confidence(confidence)
+
+        return clicked_targets
 
         if clicked_targets > 0:
             self._no_red_scroll_cycle_pending = True
@@ -1412,9 +1447,21 @@ class EatventureBot:
     
     def wipe_memory(self):
         logger.info("Wiping AI memory...")
-        self.tuner.reset()
-        self.vision_optimizer.reset()
-        self.historical_learner.reset()
+        
+        try:
+            self.tuner.reset()
+        except Exception as e:
+            logger.error(f"Failed to reset AdaptiveTuner: {e}")
+            
+        try:
+            self.vision_optimizer.reset()
+        except Exception as e:
+            logger.error(f"Failed to reset VisionOptimizer: {e}")
+            
+        try:
+            self.historical_learner.reset()
+        except Exception as e:
+            logger.error(f"Failed to reset HistoricalLearner: {e}")
         
         self._red_template_hit_counts = {}
         self._red_template_priority = []

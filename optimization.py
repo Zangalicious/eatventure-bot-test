@@ -435,3 +435,24 @@ class HistoricalLearner:
             "tuned_behavior": self._tuned_behavior,
         }
         self.persistence.save(state, force=force)
+
+    def reset(self):
+        """
+        Meticulously clears all stored telemetry, historical data arrays, and state flags.
+        Ensures the bot returns to a stable, predictable baseline.
+        """
+        with self._lock:
+            logger.info("HistoricalLearner: Resetting historical data and tuned behavior.")
+            self._records = []
+            self._total_completions = 0
+            self._last_pair_processed = 0
+            self._last_batch_processed = 0
+            self._tuned_behavior = {}
+            self._last_apply_time = 0.0
+            
+            # Persist the cleared state immediately
+            self._persist(force=True)
+            
+            # Re-apply default behavior to the bot if possible
+            if self.bot and hasattr(self.bot, "apply_learned_behavior"):
+                self.bot.apply_learned_behavior({}, reason="reset")

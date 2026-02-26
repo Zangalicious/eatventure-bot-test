@@ -44,8 +44,13 @@ def on_press(key):
             elif key.char == 'c':
                 logger = logging.getLogger(__name__)
                 if bot_instance:
-                    logger.info("[C pressed] Wiping AI memory...")
-                    bot_instance.wipe_memory()
+                    try:
+                        logger.info("[C pressed] Wiping AI memory...")
+                        bot_instance.wipe_memory()
+                    except Exception as e:
+                        logger.error(f"Failed to wipe AI memory: {e}. Defaulting to safe state.")
+                        if bot_instance.running:
+                            bot_instance.stop()
                 else:
                     logger.info("[C pressed] Bot not initialized yet")
             elif key.char == 'p':
