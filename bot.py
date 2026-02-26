@@ -280,7 +280,12 @@ class EatventureBot:
         confirm_delay = max(0.0, float(getattr(config, "ASSET_BOUNDARY_CONFIRM_DELAY", 0.0)))
 
         if precheck_delay > 0:
-            self._sleep_with_interrupt(precheck_delay)
+            if self._sleep_with_interrupt(precheck_delay):
+                logger.info(
+                    "%s pre-click validation interrupted by new-level signal during precheck delay",
+                    asset_name,
+                )
+                return None
 
         first_safe = self.mouse_controller.is_safe_to_click(x, y, relative=True)
         if not first_safe:
@@ -293,7 +298,12 @@ class EatventureBot:
             return False
 
         if confirm_delay > 0:
-            self._sleep_with_interrupt(confirm_delay)
+            if self._sleep_with_interrupt(confirm_delay):
+                logger.info(
+                    "%s pre-click validation interrupted by new-level signal during confirm delay",
+                    asset_name,
+                )
+                return None
 
         second_safe = self.mouse_controller.is_safe_to_click(x, y, relative=True)
         if not second_safe:
@@ -574,6 +584,8 @@ class EatventureBot:
             
             # 3. Check for Fallback Assets (Upgrade Station, Boxes)
             clicked = self._scan_and_click_non_red_assets(screenshot)
+            if clicked == -2:
+                return State.TRANSITION_LEVEL
             if clicked == -1:
                 return State.SCROLL
             if clicked > 0:
@@ -1181,7 +1193,12 @@ class EatventureBot:
         """STEP C: Fallback Scan. Clicks boxes and stations without returning success."""
         self.check_critical_interrupts()
         screenshot = self._capture(max_y=config.MAX_SEARCH_Y, force=True)
-        self._scan_and_click_non_red_assets(screenshot)
+        clicked = self._scan_and_click_non_red_assets(screenshot)
+        if clicked == -2:
+            return State.TRANSITION_LEVEL
+        if clicked == -1:
+            return State.SCROLL
+        return None
 
     def execute_oscillating_search(self):
         """
@@ -1233,7 +1250,10 @@ class EatventureBot:
                 check_color=config.UPGRADE_STATION_COLOR_CHECK,
             )
             if found:
-                if not self._is_asset_click_safe("Upgrade Station", x, y):
+                is_safe = self._is_asset_click_safe("Upgrade Station", x, y)
+                if is_safe is None:
+                    return -2
+                if not is_safe:
                     logger.debug("Fallback scan: upgrade station in forbidden zone, redirecting to oscillating search")
                     if self._redirect_forbidden_asset_to_scroll("Upgrade Station", x, y):
                         return -1
@@ -1589,7 +1609,10 @@ class EatventureBot:
         click_x = x + config.RED_ICON_OFFSET_X
         click_y = y + config.RED_ICON_OFFSET_Y
         
-        if not self._is_asset_click_safe("Red Icon", click_x, click_y):
+        is_safe = self._is_asset_click_safe("Red Icon", click_x, click_y)
+        if is_safe is None:
+            return State.TRANSITION_LEVEL
+        if not is_safe:
             logger.warning(f"Red icon click blocked - position with offset ({click_x}, {click_y}) is in forbidden zone")
             if self._redirect_forbidden_asset_to_scroll("Red Icon", click_x, click_y):
                 return State.SCROLL
@@ -1758,7 +1781,10 @@ class EatventureBot:
             self._last_upgrade_station_pos = click_refined_pos
             self.upgrade_station_pos = click_refined_pos
 
-        if not self._is_asset_click_safe("Upgrade Station", x, y):
+        is_safe = self._is_asset_click_safe("Upgrade Station", x, y)
+        if is_safe is None:
+            return State.TRANSITION_LEVEL
+        if not is_safe:
             logger.warning("Upgrade station position is in forbidden zone; redirecting to oscillating search")
             if self._redirect_forbidden_asset_to_scroll("Upgrade Station", x, y):
                 return State.SCROLL
