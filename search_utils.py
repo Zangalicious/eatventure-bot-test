@@ -38,9 +38,9 @@ class OscillatingSearcher:
             # Calculate steps for this specific cycle
             steps_in_leg = cycle_index * self.scroll_increment
             
-            # --- PHASE 1: UP LEG ---
-            logger.info(f"[Search] Cycle {cycle_index}: Starting UP leg ({steps_in_leg} steps)")
-            target_found = self._run_step_sequence(steps_in_leg, -1, 
+            # --- PHASE 1: DOWN LEG ---
+            logger.info(f"[Search] Cycle {cycle_index}: Starting DOWN leg ({steps_in_leg} steps)")
+            target_found = self._run_step_sequence(steps_in_leg, 1, 
                                                   check_priority, check_main_target, check_fallbacks)
             if target_found:
                 return target_found
@@ -51,9 +51,9 @@ class OscillatingSearcher:
             if boundary_hit:
                 return boundary_hit
 
-            # --- PHASE 2: DOWN LEG ---
-            logger.info(f"[Search] Cycle {cycle_index}: Starting DOWN leg ({steps_in_leg} steps)")
-            target_found = self._run_step_sequence(steps_in_leg, 1, 
+            # --- PHASE 2: UP LEG ---
+            logger.info(f"[Search] Cycle {cycle_index}: Starting UP leg ({steps_in_leg} steps)")
+            target_found = self._run_step_sequence(steps_in_leg, -1, 
                                                   check_priority, check_main_target, check_fallbacks)
             if target_found:
                 return target_found
@@ -136,4 +136,4 @@ class OscillatingSearcher:
         """Standardizes input directions into integers (1 or -1)."""
         if isinstance(direction, int): 
             return direction
-        return {"DOWN": 1, "UP": -1}.get(str(direction).upper(), 1)
+        return {"DOWN": -1, "UP": 1}.get(str(direction).upper(), 1)

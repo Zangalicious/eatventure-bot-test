@@ -11,7 +11,7 @@ WINDOW_HEIGHT = 650 * 1.2
 
 # Debug and Visualization Settings
 DEBUG = True
-DEBUG_VISION = True  # Enables masked view for tuning pixel density
+DEBUG_VISION = False  # Enables masked view for tuning pixel density
 ShowForbiddenArea = False  # Enables a visual overlay showing forbidden zones in red
 
 
@@ -32,7 +32,7 @@ LOGS_DIR = "logs"
 MATCH_THRESHOLD = 0.98
 
 # Specific thresholds for different game assets
-RED_ICON_THRESHOLD = 0.97
+RED_ICON_THRESHOLD = 0.94
 NEW_LEVEL_RED_ICON_THRESHOLD = 0.95
 STATS_RED_ICON_THRESHOLD = 0.97
 UPGRADE_STATION_THRESHOLD = 0.94
@@ -74,32 +74,32 @@ UPGRADE_STATION_CLICK_REFINE_RADIUS = 18
 ###  MOUSE & INTERACTION    ###
 ###############################
 
-# Base delays for human-like movement and interaction
-CLICK_DELAY = 0.06  # Increased post-click buffer so menu/button animations finish before the next FSM action.
-MOUSE_MOVE_DELAY = 0.008  # Doubled cursor settle time to prevent drag/click firing while the OS cursor is still stabilizing.
-CLICK_DURATION = 0.014  # Explicit press dwell time (MouseDown→wait→MouseUp) to improve emulator input registration reliability.
-MOUSE_DOWN_UP_DELAY = CLICK_DURATION  # Bound to CLICK_DURATION so every click uses the same deterministic, padded dwell time.
-DOUBLE_CLICK_DELAY = 0.05  # Added spacing between double-click pulses to avoid merged/ghost taps on slower frames.
+# Base interaction timings
+CLICK_DELAY = 0.045        # Padded handoff for UI consistency
+MOUSE_MOVE_DELAY = 0.006   
+CLICK_DURATION = 0.026     # Padded dwell ensures registration on all systems
+MOUSE_DOWN_UP_DELAY = CLICK_DURATION
+DOUBLE_CLICK_DELAY = 0.042
 
 # Mouse movement retry and correction logic
-MOUSE_MOVE_RETRIES = 3
-MOUSE_MOVE_RETRY_DELAY = 0.004  # Extra retry spacing avoids issuing clicks while the cursor is still being corrected.
-MOUSE_TARGET_SETTLE_DELAY = 0.003  # Small post-arrival dwell ensures the pointer is static before click down.
-MOUSE_TARGET_TIMEOUT = 0.06  # Slightly longer target timeout reduces fallback snap-to-target race conditions.
-MOUSE_TARGET_CHECK_INTERVAL = 0.002  # Lower-frequency polling avoids overdriving cursor checks faster than frame updates.
-MOUSE_TARGET_HOVER_DELAY = 0.003  # Added hover dwell gives the game one more frame to register hover focus.
-MOUSE_STABILIZE_DURATION = 0.008  # Requires a longer stable-at-target window before committing a click.
-MOUSE_TARGET_RETRIES = 2
-MOUSE_TARGET_CORRECTION_DELAY = 0.002  # Prevents immediate correction loops from colliding with incoming click events.
+MOUSE_MOVE_RETRIES = 2
+MOUSE_MOVE_RETRY_DELAY = 0.002
+MOUSE_TARGET_SETTLE_DELAY = 0.002
+MOUSE_TARGET_TIMEOUT = 0.045
+MOUSE_TARGET_CHECK_INTERVAL = 0.003
+MOUSE_TARGET_HOVER_DELAY = 0.002
+MOUSE_STABILIZE_DURATION = 0.008  # Longer stabilization at target before click
+MOUSE_TARGET_RETRIES = 3
+MOUSE_TARGET_CORRECTION_DELAY = 0.002
 
 # Stability delays before clicking
-MOUSE_PRE_CLICK_STABILIZE_BASE = 0.004  # Adds a minimum pause before every click so CV and pointer state are synchronized.
-MOUSE_PRE_CLICK_STABILIZE_MAX = 0.02  # Higher max pre-click pause protects long-distance cursor moves from misclicks.
-MOUSE_PRE_CLICK_STABILIZE_DISTANCE_FACTOR = 0.00005  # Slightly stronger distance scaling to pad far cursor jumps.
+MOUSE_PRE_CLICK_STABILIZE_BASE = 0.004
+MOUSE_PRE_CLICK_STABILIZE_MAX = 0.015
+MOUSE_PRE_CLICK_STABILIZE_DISTANCE_FACTOR = 0.00004
 
 # Click retry logic for robustness
 MOUSE_CLICK_RETRY_COUNT = 2
-MOUSE_CLICK_RETRY_SETTLE_DELAY = 0.004  # Retry attempts now wait longer so UI hitboxes can re-open between retries.
+MOUSE_CLICK_RETRY_SETTLE_DELAY = 0.004
 
 
 ###############################
@@ -110,24 +110,21 @@ MOUSE_CLICK_RETRY_SETTLE_DELAY = 0.004  # Retry attempts now wait longer so UI h
 SCROLL_START_POS = (180, 390)
 
 # Distance in pixels for a single "standard" scroll step
-SCROLL_PIXEL_STEP = 150
-SCROLL_DISTANCE_RATIO = 1  # Default multiplier for non-incremental scrolls
+SCROLL_PIXEL_STEP = 100     # Tightened: Finer search resolution for better locking
+SCROLL_DISTANCE_RATIO = 1
 
-# ==========================================
-# ARITHMETIC SEARCH STRATEGY
-# ==========================================
-# Arithmetic Progression Strategy: Area expands each cycle (1, 3, 5, 7...)
-MAX_SCROLL_CYCLES = 5      # Maximum widening steps before resetting
-SCROLL_INCREMENT_STEP = 3   # Number of scrolls to add per cycle
-SCROLL_INTERVAL_PAUSE = 0.4 # Extra per-scroll pause avoids scanning during inertial easing tails.
-POST_SCROLL_SETTLE = 0.45  # Heavier post-swipe settle guarantees a static frame before template matching runs.
-CYCLE_PAUSE_DURATION = 0.45  # Added cycle boundary padding prevents direction-flip scans on still-moving UI.
+# Arithmetic Search Strategy (Numerous but Short)
+MAX_SCROLL_CYCLES = 12     # Increased cycles to compensate for shorter steps
+SCROLL_INCREMENT_STEP = 3   
+SCROLL_INTERVAL_PAUSE = 0.08 # Rhythmic gap between swipes
+POST_SCROLL_SETTLE = 0.24    # CRITICAL: Pure scan window. Guarantees a static frame.
+CYCLE_PAUSE_DURATION = 0.20  # Stabilized direction flip
 
 # Visual smoothness and stability
-SCROLL_DURATION = 0.42  # Slower drag reduces motion blur and prevents ballistic flick behavior.
-SCROLL_STEP_COUNT = 60  # Intermediate steps for smooth cursor movement
-SCROLL_MIN_INTERVAL = 0.005  # Throttle between consecutive drag steps
-SCROLL_SETTLE_DELAY = 0.32  # Added settle after drag completion to ensure camera and physics have fully stopped.
+SCROLL_DURATION = 0.28     # Slower, more deliberate glide reduces motion blur
+SCROLL_STEP_COUNT = 55     # High density linear motion
+SCROLL_MIN_INTERVAL = 0.004
+SCROLL_SETTLE_DELAY = 0.12  # Mechanical stabilization (Stop Inertia)
 
 
 ###############################
@@ -135,16 +132,16 @@ SCROLL_SETTLE_DELAY = 0.32  # Added settle after drag completion to ensure camer
 ###############################
 
 # Main loop execution speed
-FSM_TICK_DELAY = 0.015  # Global FSM cadence padding so state handlers cannot overrun UI transitions between ticks.
-MAIN_LOOP_DELAY = FSM_TICK_DELAY  # Keep the runtime loop synchronized to the padded FSM tick delay.
+FSM_TICK_DELAY = 0.015     # Aligned with 60FPS frame timing (16ms)
+MAIN_LOOP_DELAY = FSM_TICK_DELAY
 
 # Minimum time to wait between state handler executions
-STATE_DELAY = 0.03  # Increased inter-state delay prevents back-to-back handler execution while menus are still animating.
-STATE_MIN_INTERVAL_DEFAULT = 0.02  # Raises minimum state revisit time to reduce rapid re-entry races.
+STATE_DELAY = 0.025
+STATE_MIN_INTERVAL_DEFAULT = 0.02
 STATE_MIN_INTERVALS = {
-    "FIND_RED_ICONS": 0.02,  # Prevents immediate re-scan loops from evaluating partially-updated frames.
-    "OPEN_BOXES": 0.02,  # Ensures box open animation has time to settle before the next asset check.
-    "SCROLL": 0.03,  # Adds extra guard time so consecutive scroll states cannot chain before settling.
+    "FIND_RED_ICONS": 0.05,  # Forces a "stare" before giving up and scrolling
+    "OPEN_BOXES": 0.015,
+    "SCROLL": 0.025,
 }
 
 # Red Icon and detection offsets
@@ -183,6 +180,7 @@ FORBIDDEN_ZONE_DETECTION_POST_DELAY = 0.03
 FORBIDDEN_ZONE_DEBOUNCE_TICKS = 3
 FORBIDDEN_ZONE_DEBOUNCE_REQUIRED_CONSENSUS = 2
 FORBIDDEN_ZONE_SCROLL_REENTRY_COOLDOWN = 0.18
+FORBIDDEN_BLACKOUT_DURATION = 3.5 # World-space coordinate ignore time
 
 # Strict pre-click boundary validator timing (Slow is Smooth, Smooth is Fast)
 FORBIDDEN_ZONE_PRECLICK_VALIDATION_DELAY = 0.012
@@ -213,12 +211,12 @@ UNLOCK_BACKOFF_THRESHOLD = 5
 UNLOCK_MAX_RETRY_DELAY = 0.5
 
 # Performance caching
-CAPTURE_CACHE_TTL = 0.004  # Shorter capture cache reduces stale-frame reads when UI changes quickly.
+CAPTURE_CACHE_TTL = 0.015  # Aligned with FSM_TICK_DELAY for efficient frame sharing.
 NEW_LEVEL_RED_ICON_CACHE_TTL = 0.01
-RED_ICON_STABILITY_CACHE_TTL = 2.0
-RED_ICON_STABILITY_RADIUS = 14
-RED_ICON_STABILITY_MIN_HITS = 2
-RED_ICON_STABILITY_MAX_HISTORY = 10
+RED_ICON_STABILITY_CACHE_TTL = 4.0 # Extended history for deliberate locking
+RED_ICON_STABILITY_RADIUS = 16    
+RED_ICON_STABILITY_MIN_HITS = 3    # INCREASED: Requires 3 frames of consistency for lock
+RED_ICON_STABILITY_MAX_HISTORY = 15 # Deeper pool for hit verification
 
 # Scan regions for Red Icons
 NEW_LEVEL_RED_ICON_X_MIN = 40
@@ -232,8 +230,8 @@ UPGRADE_RED_ICON_Y_MIN = 665
 UPGRADE_RED_ICON_Y_MAX = 680
 
 # Background monitoring frequency
-NEW_LEVEL_INTERRUPT_INTERVAL = 0.05  # Less aggressive interrupt polling lowers contention with active input operations.
-NEW_LEVEL_MONITOR_INTERVAL = 0.06  # Slower monitor cadence reduces race pressure between monitor scans and click states.
+NEW_LEVEL_INTERRUPT_INTERVAL = 0.035 # 2x faster exit from sleep states
+NEW_LEVEL_MONITOR_INTERVAL = 0.055   # Consistent background scan rate
 NEW_LEVEL_OVERRIDE_COOLDOWN = 0.25
 
 

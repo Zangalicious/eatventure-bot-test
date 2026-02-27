@@ -62,7 +62,7 @@ class ScrollHandler:
         start_x, start_y = start_pos
         
         # Scroll Physics: Precise linear step calculation
-        dir_mult = 1 if direction.upper() == "DOWN" else -1
+        dir_mult = 1 if direction.upper() == "UP" else -1
         end_y = start_y - (distance * dir_mult)
         
         logger.info(f"[Scroll] Linear Glide: {distance}px {direction} (World Y Offset: {self.current_scroll_y})")

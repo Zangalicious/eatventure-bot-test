@@ -4,6 +4,7 @@ import time
 import logging
 import threading
 from datetime import datetime
+from contextlib import contextmanager
 
 from window_capture import WindowCapture
 from image_matcher import ImageMatcher
@@ -102,6 +103,7 @@ class EatventureBot:
         self._capture_lock = threading.Lock()
         self._new_level_event = threading.Event()
         self._new_level_interrupt = None
+        self._suppress_interrupts = False
         self._new_level_monitor_stop = threading.Event()
         self._new_level_monitor_thread = None
         self._last_upgrade_station_pos = None
@@ -110,6 +112,7 @@ class EatventureBot:
         self._last_idle_click_time = 0.0
         self._state_last_run_at = {}
         self._recent_red_icon_history = []
+        self._forbidden_blackout_cache = {} # {world_coord_tuple: expiry_timestamp}
         self._no_red_scroll_cycle_pending = False
         self._last_forbidden_scroll_time = 0.0
 
@@ -147,6 +150,10 @@ class EatventureBot:
         The Global Safety Check (Deep Hook).
         Returns True if a critical interrupt is pending, or raises an exception to halt actions.
         """
+        # 0. Re-entrancy Guard: Suppress interrupts during priority overrides
+        if getattr(self, "_suppress_interrupts", False):
+            return False
+
         # 1. Check if bot was stopped by user
         if not self.running:
             if raise_exception:
@@ -441,56 +448,76 @@ class EatventureBot:
 
         return stable
 
+    def _add_to_blackout(self, x, y):
+        """Registers a screen coordinate to the world-space blackout cache."""
+        now = time.monotonic()
+        ttl = float(getattr(config, "FORBIDDEN_BLACKOUT_DURATION", 2.5))
+        scroll_y = int(self.scroll_offset_units * config.SCROLL_PIXEL_STEP)
+        world_coord = (int(x), int(y + scroll_y))
+        self._forbidden_blackout_cache[world_coord] = now + ttl
+        logger.info(f"[Blackout] Added world-coord {world_coord} for {ttl}s")
+
+    @contextmanager
+    def suppress_interrupts(self):
+        """Pythonic scope-guard to temporarily disable interrupt triggers."""
+        self._suppress_interrupts = True
+        try:
+            yield
+        finally:
+            self._suppress_interrupts = False
+
     def _click_new_level_override(self, source=None, x=None, y=None):
         now = time.monotonic()
         cooldown = getattr(config, "NEW_LEVEL_OVERRIDE_COOLDOWN", 0.0)
         if cooldown > 0 and now - self._last_new_level_override_time < cooldown:
             logger.debug("Priority override: skipping click sequence due to cooldown")
             return
-        self._last_new_level_override_time = now
-
-        self._mark_restaurant_completed(source or "priority override")
-
-        # Use detected coordinates if provided, otherwise fallback to config
-        click_x = x if x is not None else config.NEW_LEVEL_BUTTON_POS[0]
-        click_y = y if y is not None else config.NEW_LEVEL_BUTTON_POS[1]
-
-        logger.info(
-            "Priority override: clicking %s at (%s, %s)",
-            source or "button",
-            click_x,
-            click_y,
-        )
-        self.mouse_controller.click(click_x, click_y, relative=True)
-
-        button_delay = getattr(config, "NEW_LEVEL_BUTTON_DELAY", 0.02)
-        if button_delay > 0:
-            time.sleep(button_delay)
-
-        logger.info(
-            "Priority override: clicking new level position at (%s, %s)",
-            config.NEW_LEVEL_POS[0],
-            config.NEW_LEVEL_POS[1],
-        )
-        self.mouse_controller.click(
-            config.NEW_LEVEL_POS[0],
-            config.NEW_LEVEL_POS[1],
-            relative=True,
-        )
         
-        if button_delay > 0:
-            time.sleep(button_delay)
+        with self.suppress_interrupts():
+            self._last_new_level_override_time = now
 
-        logger.info(
-            "Priority override: clicking level transition position at (%s, %s)",
-            config.LEVEL_TRANSITION_POS[0],
-            config.LEVEL_TRANSITION_POS[1],
-        )
-        self.mouse_controller.click(
-            config.LEVEL_TRANSITION_POS[0],
-            config.LEVEL_TRANSITION_POS[1],
-            relative=True,
-        )
+            self._mark_restaurant_completed(source or "priority override")
+
+            # Use detected coordinates if provided, otherwise fallback to config
+            click_x = x if x is not None else config.NEW_LEVEL_BUTTON_POS[0]
+            click_y = y if y is not None else config.NEW_LEVEL_BUTTON_POS[1]
+
+            logger.info(
+                "Priority override: clicking %s at (%s, %s)",
+                source or "button",
+                click_x,
+                click_y,
+            )
+            self.mouse_controller.click(click_x, click_y, relative=True)
+
+            button_delay = getattr(config, "NEW_LEVEL_BUTTON_DELAY", 0.02)
+            if button_delay > 0:
+                time.sleep(button_delay)
+
+            logger.info(
+                "Priority override: clicking new level position at (%s, %s)",
+                config.NEW_LEVEL_POS[0],
+                config.NEW_LEVEL_POS[1],
+            )
+            self.mouse_controller.click(
+                config.NEW_LEVEL_POS[0],
+                config.NEW_LEVEL_POS[1],
+                relative=True,
+            )
+            
+            if button_delay > 0:
+                time.sleep(button_delay)
+
+            logger.info(
+                "Priority override: clicking level transition position at (%s, %s)",
+                config.LEVEL_TRANSITION_POS[0],
+                config.LEVEL_TRANSITION_POS[1],
+            )
+            self.mouse_controller.click(
+                config.LEVEL_TRANSITION_POS[0],
+                config.LEVEL_TRANSITION_POS[1],
+                relative=True,
+            )
 
     def _capture(self, max_y=None, force=False):
         cache_key = max_y if max_y is not None else "full"
@@ -1112,11 +1139,53 @@ class EatventureBot:
 
     def _filter_forbidden_red_icons(self, red_icons):
         """
-        Refactored: Uses the central segregation wrapper to categorize icons.
-        Returns: (safe_icons, forbidden_count)
+        Coordinate Blackout Implementation.
+        1. Segregates icons into safe/forbidden.
+        2. Adds forbidden icons to a world-coordinate blackout cache.
+        3. Filters 'safe' icons against the blackout cache to prevent immediate re-detection.
         """
+        now = time.monotonic()
+        ttl = float(getattr(config, "FORBIDDEN_BLACKOUT_DURATION", 2.5))
+        radius = int(getattr(config, "RED_ICON_STABILITY_RADIUS", 14))
+        
+        # Purge expired blackout entries
+        self._forbidden_blackout_cache = {
+            coord: expiry for coord, expiry in self._forbidden_blackout_cache.items()
+            if expiry > now
+        }
+        
+        # 1. Primary Segregation (Forbidden Zone Check)
         safe_icons, forbidden_icons = self._segregate_assets(red_icons)
-        return safe_icons, len(forbidden_icons)
+        
+        # Calculate current world offset (pixels)
+        # We assume scroll_offset_units is tracked correctly by searcher
+        scroll_y = int(self.scroll_offset_units * config.SCROLL_PIXEL_STEP)
+
+        # 2. Update Blackout Cache with new forbidden icons
+        for icon in forbidden_icons:
+            _, sx, sy = icon[:3]
+            self._add_to_blackout(sx, sy)
+            
+        # 3. Filter Safe Icons against Blackout Cache
+        # This prevents "Immediate trigger" from re-detecting the same icon we just blacklisted
+        final_safe_icons = []
+        for icon in safe_icons:
+            _, sx, sy = icon[:3]
+            wx, wy = sx, sy + scroll_y
+            
+            is_blacklisted = False
+            for (bx, by), expiry in self._forbidden_blackout_cache.items():
+                # Distance check in World Space
+                if abs(bx - wx) <= radius and abs(by - wy) <= radius:
+                    is_blacklisted = True
+                    break
+            
+            if not is_blacklisted:
+                final_safe_icons.append(icon)
+            else:
+                logger.debug(f"[Blackout] Active: Ignoring icon at world-coord ({wx}, {wy})")
+                
+        return final_safe_icons, len(forbidden_icons)
 
     def _prioritize_red_icons(self, red_icons):
         def get_priority(icon):
@@ -1673,6 +1742,7 @@ class EatventureBot:
             return State.TRANSITION_LEVEL
         if not is_safe:
             logger.warning(f"Red icon click blocked - position with offset ({click_x}, {click_y}) is in forbidden zone")
+            self._add_to_blackout(x, y) # Blacklist the original detection point
             if self._redirect_forbidden_asset_to_scroll("Red Icon", click_x, click_y):
                 return State.SCROLL
             
@@ -1998,8 +2068,8 @@ class EatventureBot:
         # This ensures the IOS pattern always starts from a known reference point.
         if abs(self.scroll_offset_units) > 0.01:
             logger.info(f"Drift detected ({self.scroll_offset_units:.2f} units). Correcting to center before search.")
-            # If offset is positive (UP), we need to scroll DOWN (direction=1)
-            # If offset is negative (DOWN), we need to scroll UP (direction=-1)
+            # If offset is positive (DOWN), we need to scroll UP (direction=1)
+            # If offset is negative (UP), we need to scroll DOWN (direction=-1)
             direction_int = 1 if self.scroll_offset_units > 0 else -1
             correction_dist = abs(self.scroll_offset_units)
             
